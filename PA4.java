@@ -19,8 +19,8 @@ public class PA4 {
         String[] sootArgs = {
             "-cp", classPath, "-pp",        // sets the class path for Soot
             "-keep-line-number",            // preserves line numbers in input Java files  
-            "-f", "c",
-            "-via-shimple",
+            "-f", "shimple",
+            // "-via-shimple",
             "-main-class", "Test",	        // specify the main class
             // "Test", "Node"                  // list the classes to analyze
             "-process-dir", dir

@@ -14,9 +14,11 @@ import soot.Local;
 import soot.Unit;
 import soot.UnitPatchingChain;
 import soot.Value;
+import soot.baf.GotoInst;
 import soot.jimple.Constant;
 import soot.jimple.IntConstant;
 import soot.jimple.InvokeExpr;
+import soot.jimple.Jimple;
 import soot.jimple.StringConstant;
 import soot.jimple.internal.JAddExpr;
 import soot.jimple.internal.JAndExpr;
@@ -24,6 +26,7 @@ import soot.jimple.internal.JAssignStmt;
 import soot.jimple.internal.JDivExpr;
 import soot.jimple.internal.JEqExpr;
 import soot.jimple.internal.JGeExpr;
+import soot.jimple.internal.JGotoStmt;
 import soot.jimple.internal.JGtExpr;
 import soot.jimple.internal.JIfStmt;
 import soot.jimple.internal.JInvokeStmt;
@@ -114,6 +117,11 @@ class SimpleConstPropagation{
             replaceWith.put(u, (Unit) u.clone());
         }
 
+        // mapping between if statement and the branch to replace
+        // it with
+        HashMap<JIfStmt, JGotoStmt> replaceIfWith = new HashMap<>();
+        HashSet<Unit> deadStmts = new HashSet<>();
+
         System.out.println(sep + sep + sep);
 
         LinkedList<Unit> q = new LinkedList<>();
@@ -163,7 +171,12 @@ class SimpleConstPropagation{
                         // simplify the use with the value of this unit's local
                         replaceWith.put(
                             use, 
-                            simplify(replaceWith.get(use), local, (IntConstant) rhs)
+                            simplify(
+                                use,
+                                replaceWith.get(use), 
+                                local, (IntConstant) rhs,
+                                deadStmts
+                            )
                         );
 
                         q.add(use);
@@ -173,9 +186,13 @@ class SimpleConstPropagation{
             } 
         }
 
-        
+        // remove all dead stmts
+        units.removeAll(deadStmts);
+
+        // swap the units with their changed versions
         for (Map.Entry<Unit, Unit> entry : replaceWith.entrySet()){
-            units.swapWith(entry.getKey(), entry.getValue());
+            if (units.contains(entry.getKey()))
+                units.swapWith(entry.getKey(), entry.getValue());
         }
         
         System.out.println(sep + sep + sep);
@@ -190,7 +207,13 @@ class SimpleConstPropagation{
         printObject(body.toJimpleBody());
     }
 
-    private Unit simplify(Unit u, JimpleLocal var, IntConstant value){
+    private Unit simplify(
+        Unit original,
+        Unit u, 
+        JimpleLocal var, 
+        IntConstant value,
+        HashSet<Unit> deadStmts){
+
         // assignment stmt
         if (Utils.isAssignmentStmt(u)){
             JAssignStmt stmt = (JAssignStmt) u;
@@ -339,6 +362,8 @@ class SimpleConstPropagation{
         if (Utils.isIfStmt(u)){
             JIfStmt stmt = (JIfStmt) u;
             Value cond = stmt.getCondition();
+            boolean fallThrough = false;
+            boolean branch = false;
 
             // System.out.println("Simplify:");
             // printObject(stmt);
@@ -359,6 +384,21 @@ class SimpleConstPropagation{
                     expr.setOp2(value);
                     right = value;
                 }
+
+                if (Utils.isIntConstant(left)
+                    && Utils.isIntConstant(right)){
+                    
+                    // evaluate the branch condition
+                    boolean condition = Utils.extractIntValue(left)
+                                    > Utils.extractIntValue(right);
+                    
+                    // if the condition is true, we'll replace
+                    // if stmt with goto to target
+                    if (condition)
+                        branch = true;
+                    else                    // otherwise we delete the if stmt
+                        fallThrough = true;
+                }
             }
 
             // >=
@@ -375,6 +415,21 @@ class SimpleConstPropagation{
                 if (isEquiv(right, var)){
                     expr.setOp2(value);
                     right = value;
+                }
+
+                if (Utils.isIntConstant(left)
+                    && Utils.isIntConstant(right)){
+                    
+                    // evaluate the branch condition
+                    boolean condition = Utils.extractIntValue(left)
+                                    >= Utils.extractIntValue(right);
+                    
+                    // if the condition is true, we'll replace
+                    // if stmt with goto to target
+                    if (condition)
+                        branch = true;
+                    else                    // otherwise we delete the if stmt
+                        fallThrough = true;
                 }
             }
 
@@ -393,6 +448,21 @@ class SimpleConstPropagation{
                     expr.setOp2(value);
                     right = value;
                 }
+
+                if (Utils.isIntConstant(left)
+                    && Utils.isIntConstant(right)){
+                    
+                    // evaluate the branch condition
+                    boolean condition = Utils.extractIntValue(left)
+                                    < Utils.extractIntValue(right);
+                    
+                    // if the condition is true, we'll replace
+                    // if stmt with goto to target
+                    if (condition)
+                        branch = true;
+                    else                    // otherwise we delete the if stmt
+                        fallThrough = true;
+                }
             }
 
             // <=
@@ -409,6 +479,21 @@ class SimpleConstPropagation{
                 if (isEquiv(right, var)){
                     expr.setOp2(value);
                     right = value;
+                }
+
+                if (Utils.isIntConstant(left)
+                    && Utils.isIntConstant(right)){
+                    
+                    // evaluate the branch condition
+                    boolean condition = Utils.extractIntValue(left)
+                                    <= Utils.extractIntValue(right);
+                    
+                    // if the condition is true, we'll replace
+                    // if stmt with goto to target
+                    if (condition)
+                        branch = true;
+                    else                    // otherwise we delete the if stmt
+                        fallThrough = true;
                 }
             }
 
@@ -427,6 +512,21 @@ class SimpleConstPropagation{
                     expr.setOp2(value);
                     right = value;
                 }
+
+                if (Utils.isIntConstant(left)
+                    && Utils.isIntConstant(right)){
+                    
+                    // evaluate the branch condition
+                    boolean condition = Utils.extractIntValue(left)
+                                    == Utils.extractIntValue(right);
+                    
+                    // if the condition is true, we'll replace
+                    // if stmt with goto to target
+                    if (condition)
+                        branch = true;
+                    else                    // otherwise we delete the if stmt
+                        fallThrough = true;
+                }
             }
 
             // !=
@@ -444,7 +544,28 @@ class SimpleConstPropagation{
                     expr.setOp2(value);
                     right = value;
                 }
+
+                if (Utils.isIntConstant(left)
+                    && Utils.isIntConstant(right)){
+                    
+                    // evaluate the branch condition
+                    boolean condition = Utils.extractIntValue(left)
+                                    != Utils.extractIntValue(right);
+                    
+                    // if the condition is true, we'll replace
+                    // if stmt with goto to target
+                    if (condition)
+                        branch = true;
+                    else                    // otherwise we delete the if stmt
+                        fallThrough = true;
+                }
             }
+
+            // if branch then replace if with goto to branch target
+            if (branch)
+                return Jimple.v().newGotoStmt(stmt.getTargetBox());
+            else                // otherwise we fall through so delete if stmt
+                deadStmts.add(original);
         }
 
         // return stmt
