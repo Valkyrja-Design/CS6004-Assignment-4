@@ -1,0 +1,6 @@
+sootOutput/
+.vscode/
+*.log
+*.shimple
+*.class
+*.jar
