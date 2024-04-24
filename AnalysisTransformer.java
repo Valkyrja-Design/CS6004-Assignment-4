@@ -9,18 +9,31 @@ import java.util.Set;
 
 import soot.Body;
 import soot.BodyTransformer;
+import soot.BooleanType;
 import soot.Local;
 import soot.Unit;
 import soot.UnitPatchingChain;
 import soot.Value;
 import soot.jimple.Constant;
 import soot.jimple.IntConstant;
+import soot.jimple.InvokeExpr;
 import soot.jimple.StringConstant;
 import soot.jimple.internal.JAddExpr;
+import soot.jimple.internal.JAndExpr;
 import soot.jimple.internal.JAssignStmt;
 import soot.jimple.internal.JDivExpr;
+import soot.jimple.internal.JEqExpr;
+import soot.jimple.internal.JGeExpr;
+import soot.jimple.internal.JGtExpr;
 import soot.jimple.internal.JIfStmt;
+import soot.jimple.internal.JInvokeStmt;
+import soot.jimple.internal.JLeExpr;
+import soot.jimple.internal.JLtExpr;
 import soot.jimple.internal.JMulExpr;
+import soot.jimple.internal.JNeExpr;
+import soot.jimple.internal.JNegExpr;
+import soot.jimple.internal.JOrExpr;
+import soot.jimple.internal.JReturnStmt;
 import soot.jimple.internal.JSubExpr;
 import soot.jimple.internal.JimpleLocal;
 import soot.shimple.ShimpleBody;
@@ -53,9 +66,9 @@ public class AnalysisTransformer extends BodyTransformer {
         System.out.println("---------------------- " + body.getMethod().getName() + " ----------------------");
 
         if (optimization == "scp"){
-            SimpleConstPropagation scp = new SimpleConstPropagation(body);
+            new SimpleConstPropagation(body);
         } else {
-            SparseConditionalConstPropagation sccp = new SparseConditionalConstPropagation(body);
+            new SparseConditionalConstPropagation(body);
         }
     }
 
@@ -64,7 +77,7 @@ public class AnalysisTransformer extends BodyTransformer {
 
 /*
  * Reference: https://people.iith.ac.in/ramakrishna/fc5264/ssa-intro-construct.pdf
- * A very simple constant folder and propagation
+ * A very simple constant folder and propagator
  */
 class SimpleConstPropagation{
     SimpleConstPropagation(Body body){
@@ -95,9 +108,13 @@ class SimpleConstPropagation{
         
         // mapping between old and new stmt, used when simplifying
         HashMap<Unit, Unit> replaceWith = new HashMap<>();
+        System.out.println("Units:");
         for (Unit u : units){
-            replaceWith.put(u, u);
+            printObject(u);
+            replaceWith.put(u, (Unit) u.clone());
         }
+
+        System.out.println(sep + sep + sep);
 
         LinkedList<Unit> q = new LinkedList<>();
         q.addAll(units);
@@ -106,7 +123,10 @@ class SimpleConstPropagation{
         while (!q.isEmpty()){
             Unit u = q.pollFirst();
             Unit changedU = replaceWith.get(u);
-
+            
+            System.out.println("Original:");
+            printObject(u);
+            System.out.println("Changed:");
             printObject(changedU);
 
             if (Utils.isAssignmentStmt(changedU)){
@@ -122,6 +142,18 @@ class SimpleConstPropagation{
                 
                 printObject(rhs);
 
+                // x = phi(c, c, c, ...) for some c
+                if (Utils.isPhiExpr(rhs) && phiExprAllConstant((SPhiExpr) rhs)){
+                    SPhiExpr phiExpr = (SPhiExpr) rhs;
+                    stmt.setRightOp(
+                        IntConstant.v(
+                            Utils.extractIntValue(phiExpr.getValue(0))
+                        )
+                    );
+
+                    rhs = stmt.getRightOp();
+                }
+
                 if (Utils.isIntConstant(rhs)){       // x = c
                     // propagate the constant to all uses
                     for (Object useValueBox : localUses.getUsesOf(u)){
@@ -136,20 +168,30 @@ class SimpleConstPropagation{
 
                         q.add(use);
                     }
-                } 
-                        
+                }      
+                
             } 
-            // System.out.println(localUses.getUsesOf(u));
+        }
+
+        
+        for (Map.Entry<Unit, Unit> entry : replaceWith.entrySet()){
+            units.swapWith(entry.getKey(), entry.getValue());
+        }
+        
+        System.out.println(sep + sep + sep);
+        for (Unit u : units){
+            printObject(u);
         }
 
         System.out.println(sep + sep + sep);
-        // System.out.println(body.toJimpleBody());
-        for (Unit u : units){
-            printObject(replaceWith.get(u));
-        }
+        printObject(body);
+
+        System.out.println(sep + sep + sep);
+        printObject(body.toJimpleBody());
     }
 
     private Unit simplify(Unit u, JimpleLocal var, IntConstant value){
+        // assignment stmt
         if (Utils.isAssignmentStmt(u)){
             JAssignStmt stmt = (JAssignStmt) u;
             Value rhs = stmt.getRightOp();
@@ -166,8 +208,7 @@ class SimpleConstPropagation{
                     Value arg = phiExpr.getValue(i);
                     
                     // if this argument is equal to 'var'
-                    if (Utils.isLocal(arg)
-                        && (var.equivTo((JimpleLocal) arg))){
+                    if (isEquiv(arg, var)){
                         
                         // replace it with 'value'
                         phiExpr.setValue(i, value);
@@ -181,14 +222,12 @@ class SimpleConstPropagation{
                 Value left = expr.getOp1();
                 Value right = expr.getOp2();
 
-                if (Utils.isLocal(left)
-                    && var.equivTo((JimpleLocal) left)){
+                if (isEquiv(left, var)){
                     expr.setOp1(value);
                     left = value;
                 }
 
-                if (Utils.isLocal(right)
-                    && var.equivTo((JimpleLocal) right)){
+                if (isEquiv(right, var)){
                     expr.setOp2(value);
                     right = value;
                 }
@@ -210,14 +249,12 @@ class SimpleConstPropagation{
                 Value left = expr.getOp1();
                 Value right = expr.getOp2();
 
-                if (Utils.isLocal(left)
-                    && var.equivTo((JimpleLocal) left)){
+                if (isEquiv(left, var)){
                     expr.setOp1(value);
                     left = value;
                 }
 
-                if (Utils.isLocal(right)
-                    && var.equivTo((JimpleLocal) right)){
+                if (isEquiv(right, var)){
                     expr.setOp2(value);
                     right = value;
                 }
@@ -239,14 +276,12 @@ class SimpleConstPropagation{
                 Value left = expr.getOp1();
                 Value right = expr.getOp2();
 
-                if (Utils.isLocal(left)
-                    && var.equivTo((JimpleLocal) left)){
+                if (isEquiv(left, var)){
                     expr.setOp1(value);
                     left = value;
                 }
 
-                if (Utils.isLocal(right)
-                    && var.equivTo((JimpleLocal) right)){
+                if (isEquiv(right, var)){
                     expr.setOp2(value);
                     right = value;
                 }
@@ -268,14 +303,12 @@ class SimpleConstPropagation{
                 Value left = expr.getOp1();
                 Value right = expr.getOp2();
 
-                if (Utils.isLocal(left)
-                    && var.equivTo((JimpleLocal) left)){
+                if (isEquiv(left, var)){
                     expr.setOp1(value);
                     left = value;
                 }
 
-                if (Utils.isLocal(right)
-                    && var.equivTo((JimpleLocal) right)){
+                if (isEquiv(right, var)){
                     expr.setOp2(value);
                     right = value;
                 }
@@ -290,11 +323,165 @@ class SimpleConstPropagation{
                     );
                 }
             }
+
+            // negation
+            if (Utils.isNegExpr(rhs)){
+                JNegExpr expr = (JNegExpr) rhs;
+                Value op = expr.getOp();
+
+                if (isEquiv(op, var)){
+                    stmt.setRightOp(IntConstant.v(-value.value));
+                }
+            }
         }
+
+        // if stmt
+        if (Utils.isIfStmt(u)){
+            JIfStmt stmt = (JIfStmt) u;
+            Value cond = stmt.getCondition();
+
+            // System.out.println("Simplify:");
+            // printObject(stmt);
+            // printObject(cond);
+
+            // >
+            if (Utils.isGtExpr(cond)){
+                JGtExpr expr = (JGtExpr) cond;
+                Value left = expr.getOp1();
+                Value right = expr.getOp2();
+
+                if (isEquiv(left, var)){
+                    expr.setOp1(value);
+                    left = value;
+                }
+
+                if (isEquiv(right, var)){
+                    expr.setOp2(value);
+                    right = value;
+                }
+            }
+
+            // >=
+            if (Utils.isGeExpr(cond)){
+                JGeExpr expr = (JGeExpr) cond;
+                Value left = expr.getOp1();
+                Value right = expr.getOp2();
+
+                if (isEquiv(left, var)){
+                    expr.setOp1(value);
+                    left = value;
+                }
+
+                if (isEquiv(right, var)){
+                    expr.setOp2(value);
+                    right = value;
+                }
+            }
+
+            // <
+            if (Utils.isLtExpr(cond)){
+                JLtExpr expr = (JLtExpr) cond;
+                Value left = expr.getOp1();
+                Value right = expr.getOp2();
+
+                if (isEquiv(left, var)){
+                    expr.setOp1(value);
+                    left = value;
+                }
+
+                if (isEquiv(right, var)){
+                    expr.setOp2(value);
+                    right = value;
+                }
+            }
+
+            // <=
+            if (Utils.isLeExpr(cond)){
+                JLeExpr expr = (JLeExpr) cond;
+                Value left = expr.getOp1();
+                Value right = expr.getOp2();
+
+                if (isEquiv(left, var)){
+                    expr.setOp1(value);
+                    left = value;
+                }
+
+                if (isEquiv(right, var)){
+                    expr.setOp2(value);
+                    right = value;
+                }
+            }
+
+            // ==
+            if (Utils.isEqExpr(cond)){
+                JEqExpr expr = (JEqExpr) cond;
+                Value left = expr.getOp1();
+                Value right = expr.getOp2();
+
+                if (isEquiv(left, var)){
+                    expr.setOp1(value);
+                    left = value;
+                }
+
+                if (isEquiv(right, var)){
+                    expr.setOp2(value);
+                    right = value;
+                }
+            }
+
+            // !=
+            if (Utils.isNeExpr(cond)){
+                JNeExpr expr = (JNeExpr) cond;
+                Value left = expr.getOp1();
+                Value right = expr.getOp2();
+
+                if (isEquiv(left, var)){
+                    expr.setOp1(value);
+                    left = value;
+                }
+
+                if (isEquiv(right, var)){
+                    expr.setOp2(value);
+                    right = value;
+                }
+            }
+        }
+
+        // return stmt
+        if (Utils.isReturnStmt(u)){
+            JReturnStmt stmt = (JReturnStmt) u;
+            Value op = stmt.getOp();
+
+            if (isEquiv(op, var)){
+                stmt.setOp(value);
+            }
+        }
+
+        // invoke stmt
+        if (Utils.isInvokeStmt(u)){
+            JInvokeStmt stmt = (JInvokeStmt) u;
+            
+            if (stmt.containsInvokeExpr()){
+                InvokeExpr expr = stmt.getInvokeExpr();
+
+                // check all arguments
+                for (int i = 0; i < expr.getArgCount(); ++i){
+                    Value arg = expr.getArg(i);
+
+                    if (isEquiv(arg, var)){
+                        expr.setArg(i, value);
+                    }
+                }
+            }
+        }   
 
         return u;
     }
     
+    private boolean isEquiv(Value v, JimpleLocal local){
+        return Utils.isLocal(v) && local.equivTo((JimpleLocal) v);
+    }
+
     // returns true if all the args of the given phi expr
     // are equal to the same constant
     private boolean phiExprAllConstant(SPhiExpr expr){
@@ -360,6 +547,14 @@ class Utils{
         return u instanceof JIfStmt;
     }
 
+    public static boolean isReturnStmt(Unit u){
+        return u instanceof JReturnStmt;
+    }
+
+    public static boolean isInvokeStmt(Unit u){
+        return u instanceof JInvokeStmt;
+    }
+
     public static boolean isMulExpr(Value v){
         return v instanceof JMulExpr;
     }
@@ -378,6 +573,42 @@ class Utils{
 
     public static boolean isPhiExpr(Value v){
         return v instanceof SPhiExpr;
+    }
+
+    public static boolean isAndExpr(Value v){
+        return v instanceof JAndExpr;
+    }
+
+    public static boolean isOrExpr(Value v){
+        return v instanceof JOrExpr;
+    }
+
+    public static boolean isEqExpr(Value v){
+        return v instanceof JEqExpr;
+    }
+
+    public static boolean isNeExpr(Value v){
+        return v instanceof JNeExpr;
+    }
+
+    public static boolean isGtExpr(Value v){
+        return v instanceof JGtExpr;
+    }
+
+    public static boolean isGeExpr(Value v){
+        return v instanceof JGeExpr;
+    }
+
+    public static boolean isLtExpr(Value v){
+        return v instanceof JLtExpr;
+    }
+
+    public static boolean isLeExpr(Value v){
+        return v instanceof JLeExpr;
+    }
+
+    public static boolean isNegExpr(Value v){
+        return v instanceof JNegExpr;
     }
 
     public static int extractIntValue(Value v){
