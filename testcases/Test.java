@@ -6,7 +6,9 @@ public class Test {
     public static int foo(){
         int x0 = 0;
         int y0 = 0;
-        for (int i = 0; i < 100000000; ++i){
+        int iterations = 500000000;
+
+        for (int i = 0; i < iterations; ++i){
             int x = 1;
             int y = 2;
             x = x * y;

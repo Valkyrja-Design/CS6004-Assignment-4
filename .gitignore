@@ -3,4 +3,4 @@ sootOutput/
 *.log
 *.shimple
 *.class
-j2re-image/
+# j2re-image/

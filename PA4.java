@@ -13,7 +13,6 @@ public class PA4 {
             "-via-shimple",
             "-p", "jop.cpf",
             "enabled:false",
-            "-main-class", "Test",	        // specify the main class
             "-process-dir", dir
         };
 

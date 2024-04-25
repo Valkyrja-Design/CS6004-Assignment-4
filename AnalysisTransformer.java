@@ -62,7 +62,7 @@ public class AnalysisTransformer extends BodyTransformer {
             e.printStackTrace();
         }
 
-        System.out.println("---------------------- " + body.getMethod().getName() + " ----------------------");
+        // System.out.println("---------------------- " + body.getMethod().getName() + " ----------------------");
 
         new SimpleConstPropagation(body);
     }
@@ -101,9 +101,9 @@ class SimpleConstPropagation{
         
         // mapping between old and new stmt, used when simplifying
         HashMap<Unit, Unit> replaceWith = new HashMap<>();
-        System.out.println("Units:");
+        // System.out.println("Units:");
         for (Unit u : units){
-            printObject(u);
+            // printObject(u);
             replaceWith.put(u, (Unit) u.clone());
         }
 
@@ -112,7 +112,7 @@ class SimpleConstPropagation{
         HashMap<JIfStmt, JGotoStmt> replaceIfWith = new HashMap<>();
         HashSet<Unit> deadStmts = new HashSet<>();
 
-        System.out.println(sep + sep + sep);
+        // System.out.println(sep + sep + sep);
 
         LinkedList<Unit> q = new LinkedList<>();
         q.addAll(units);
@@ -122,10 +122,10 @@ class SimpleConstPropagation{
             Unit u = q.pollFirst();
             Unit changedU = replaceWith.get(u);
             
-            System.out.println("Original:");
-            printObject(u);
-            System.out.println("Changed:");
-            printObject(changedU);
+            // System.out.println("Original:");
+            // printObject(u);
+            // System.out.println("Changed:");
+            // printObject(changedU);
 
             if (Utils.isAssignmentStmt(changedU)){
                 JAssignStmt stmt = (JAssignStmt) changedU;
@@ -138,7 +138,7 @@ class SimpleConstPropagation{
                 JimpleLocal local = (JimpleLocal) lhs;
                 Value rhs = stmt.getRightOp();
                 
-                printObject(rhs);
+                // printObject(rhs);
 
                 // x = phi(c, c, c, ...) for some c
                 if (Utils.isPhiExpr(rhs) && phiExprAllConstant((SPhiExpr) rhs)){
@@ -185,16 +185,16 @@ class SimpleConstPropagation{
                 units.swapWith(entry.getKey(), entry.getValue());
         }
         
-        System.out.println(sep + sep + sep);
-        for (Unit u : units){
-            printObject(u);
-        }
+        // System.out.println(sep + sep + sep);
+        // for (Unit u : units){
+        //     printObject(u);
+        // }
 
-        System.out.println(sep + sep + sep);
-        printObject(body);
+        // System.out.println(sep + sep + sep);
+        // printObject(body);
 
-        System.out.println(sep + sep + sep);
-        printObject(body.toJimpleBody());
+        // System.out.println(sep + sep + sep);
+        // printObject(body.toJimpleBody());
     }
 
     private Unit simplify(
@@ -551,10 +551,11 @@ class SimpleConstPropagation{
                 }
             }
 
+            // printObject(stmt);
             // if branch then replace if with goto to branch target
             if (branch)
                 return Jimple.v().newGotoStmt(stmt.getTargetBox());
-            else                // otherwise we fall through so delete if stmt
+            else if (fallThrough)       // otherwise we fall through so delete if stmt
                 deadStmts.add(original);
         }
 
@@ -620,14 +621,6 @@ class SimpleConstPropagation{
     // prints the given object alongside its class name
     private void printObject(Object obj){
         System.out.println("[" + obj.getClass() + "] " + obj);
-    }
-
-    private ShimpleBody body;
-}
-
-class SparseConditionalConstPropagation{
-    SparseConditionalConstPropagation(Body body){
-        this.body = (ShimpleBody) body;
     }
 
     private ShimpleBody body;
