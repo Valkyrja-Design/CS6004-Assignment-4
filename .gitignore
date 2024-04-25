@@ -3,4 +3,6 @@ sootOutput/
 *.log
 *.shimple
 *.class
-# j2re-image/
+*.jar
+*.diz
+*.zip
