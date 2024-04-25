@@ -47,10 +47,6 @@ import soot.toolkits.scalar.UnitValueBoxPair;
 import soot.util.Chain;
 
 public class AnalysisTransformer extends BodyTransformer {
-    AnalysisTransformer(String optimization){
-        this.optimization = optimization;
-    }
-
     @Override
     protected void internalTransform(Body body, String phaseName, Map<String, String> options){
         if (body.getMethod().isConstructor())
@@ -68,14 +64,8 @@ public class AnalysisTransformer extends BodyTransformer {
 
         System.out.println("---------------------- " + body.getMethod().getName() + " ----------------------");
 
-        if (optimization == "scp"){
-            new SimpleConstPropagation(body);
-        } else {
-            new SparseConditionalConstPropagation(body);
-        }
+        new SimpleConstPropagation(body);
     }
-
-    private String optimization;    // the desired optimization
 }
 
 /*
