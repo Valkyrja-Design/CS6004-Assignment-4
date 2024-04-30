@@ -10,6 +10,7 @@ public class AnalysisTransformer extends BodyTransformer {
     protected void internalTransform(Body body, String phaseName, Map<String, String> options){
         if (body.getMethod().isConstructor())
             return;
+
         // write the unchanged shimple body to a file
         String fileName = body.getMethod().getName() + ".shimple";
         try {

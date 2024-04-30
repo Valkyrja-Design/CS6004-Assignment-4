@@ -1,4 +1,5 @@
 import soot.*;
+import soot.dava.internal.AST.ASTTryNode.container;
 import soot.jimple.*;
 import soot.jimple.internal.*;
 import soot.shimple.*;
@@ -106,8 +107,15 @@ public class SimpleConstPropagator{
         // remove all dead stmts
         units.removeAll(deadStmts);
 
-        // swap the units with their changed versions
+        // // swap the units with their changed versions
         for (Map.Entry<Unit, Unit> entry : replaceWith.entrySet()){
+            if (Utils.isAssignmentStmt(entry.getKey())){
+                JAssignStmt stmt = (JAssignStmt) entry.getKey();
+                
+                if (Utils.isPhiExpr(stmt.getRightOp()))
+                    continue;
+            }
+
             if (units.contains(entry.getKey()))
                 units.swapWith(entry.getKey(), entry.getValue());
         }
